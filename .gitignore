@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+**/TestResults/
+**/coverage/
+**/playwright-report/
+**/test-results/
+.vs/
+.env
+src/Recipe.Api/App_Data/
+*.user
+*.tsbuildinfo
