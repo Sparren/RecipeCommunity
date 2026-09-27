@@ -11,13 +11,16 @@ public sealed class RecipeService(IRecipeStore recipes, ICatalogueStore catalogu
         if (recipe.AuthorId != currentUser.Id) throw new ForbiddenException();
         if (await catalogue.FindUser(currentUser.Id, ct) is null) throw new ForbiddenException();
         var choices = await catalogue.Read("sv", ct);
-        if (!choices.RecipeTypes.Any(t => t.Id == input.RecipeTypeId))
+        if (input.RecipeTypeId.HasValue && !choices.RecipeTypes.Any(t => t.Id == input.RecipeTypeId))
             throw new InputException("recipeTypeId", "Select an existing recipe type.");
-        if (input.Yield?.Quantity is null) throw new InputException("yield", "Yield is required.");
-        if (!choices.Units.Any(u => u.Id == input.Yield.UnitId && u.ForYield))
+        if (input.RecipeTypeId.HasValue && input.RecipeTypeId != recipe.RecipeTypeId && !choices.RecipeTypes.Single(t => t.Id == input.RecipeTypeId).IsActive)
+            throw new InputException("recipeTypeId", "Inactive recipe types can only be retained on recipes already referencing them.");
+        if (input.Yield is not null && !choices.Units.Any(u => u.Id == input.Yield.UnitId && u.ForYield))
             throw new InputException("yield.unitId", "Select a unit suitable for yield.");
         if (input.TagIds is null || input.TagIds.Any(t => !choices.Tags.Any(x => x.Id == t)))
             throw new InputException("tagIds", "Select existing tags.");
+        if (input.TagIds.Any(t => !choices.Tags.Single(x => x.Id == t).IsActive && !recipe.Tags.Any(x => x.TagId == t)))
+            throw new InputException("tagIds", "Inactive tags can only be retained on recipes already referencing them.");
         if (input.IngredientGroups is null || input.CookingSteps is null)
             throw new InputException("recipe", "Groups and cooking steps must be supplied.");
 
@@ -65,10 +68,20 @@ public sealed class RecipeService(IRecipeStore recipes, ICatalogueStore catalogu
             SortOrder = index
         }).ToList();
 
+        // Apply the rule on every Published write, including edits of already published recipes.
+        // Status comes from the catalogue, never from a caller's ingredient display metadata.
+        if (input.PublicationState == PublicationState.Published)
+        {
+            var pending = await catalogue.PendingIngredients(entries.Select(i => i.IngredientId), ct);
+            if (pending.Count > 0)
+                throw new InputException("publicationState", "Receptet kan inte publiceras. Följande ingredienser väntar på granskning: "
+                    + string.Join(", ", pending.Select(i => i.Name)) + ". Spara som utkast eller ersätt dem med godkända ingredienser.");
+        }
+
         recipe.Name = input.Name?.Trim() ?? "";
         recipe.Description = Clean(input.Description);
         recipe.RecipeTypeId = input.RecipeTypeId;
-        try { recipe.Yield = new Yield(MakeQuantity(input.Yield.Quantity, "yield.quantity"), input.Yield.UnitId); }
+        try { recipe.Yield = input.Yield is null ? null : new Yield(MakeQuantity(input.Yield.Quantity, "yield.quantity"), input.Yield.UnitId); }
         catch (DomainException e) { throw new InputException("yield", e.Message); }
         recipe.TotalTimeMinutes = input.TotalTimeMinutes;
         recipe.PublicationState = input.PublicationState;

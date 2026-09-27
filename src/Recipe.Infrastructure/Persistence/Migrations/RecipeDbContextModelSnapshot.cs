@@ -50,9 +50,26 @@ namespace Recipe.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.HasKey("Id");
 
-                    b.ToTable("Ingredients");
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("Status", "CreatedByUserId");
+
+                    b.ToTable("Ingredients", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Ingredient_Status", "\"Status\" IN ('Active', 'PendingReview')");
+                        });
                 });
 
             modelBuilder.Entity("Recipe.Domain.IngredientAlias", b =>
@@ -145,7 +162,7 @@ namespace Recipe.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<Guid>("RecipeTypeId")
+                    b.Property<Guid?>("RecipeTypeId")
                         .HasColumnType("uuid");
 
                     b.Property<int?>("TotalTimeMinutes")
@@ -164,7 +181,7 @@ namespace Recipe.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_Recipe_Time", "\"TotalTimeMinutes\" IS NULL OR \"TotalTimeMinutes\" > 0");
 
-                            t.HasCheckConstraint("CK_Recipe_Yield", "\"YieldValue\" > 0 AND (\"YieldMaximumValue\" IS NULL OR \"YieldMaximumValue\" > \"YieldValue\")");
+                            t.HasCheckConstraint("CK_Recipe_Yield", "(\"YieldValue\" IS NULL AND \"YieldMaximumValue\" IS NULL AND \"YieldUnitId\" IS NULL) OR (\"YieldValue\" IS NOT NULL AND \"YieldValue\" > 0 AND \"YieldUnitId\" IS NOT NULL AND (\"YieldMaximumValue\" IS NULL OR \"YieldMaximumValue\" > \"YieldValue\"))");
                         });
                 });
 
@@ -266,12 +283,47 @@ namespace Recipe.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
                         .IsUnique();
 
-                    b.ToTable("RecipeTypes");
+                    b.ToTable("RecipeTypes", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_RecipeType_SortOrder", "\"SortOrder\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Recipe.Domain.RecipeTypeAlias", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(35)
+                        .HasColumnType("character varying(35)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .UseCollation("recipe_text");
+
+                    b.Property<Guid>("RecipeTypeId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecipeTypeId");
+
+                    b.ToTable("RecipeTypeAlias");
                 });
 
             modelBuilder.Entity("Recipe.Domain.RecipeTypeName", b =>
@@ -284,7 +336,8 @@ namespace Recipe.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .UseCollation("recipe_text");
 
                     b.HasKey("RecipeTypeId", "Language");
 
@@ -300,12 +353,41 @@ namespace Recipe.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
                         .IsUnique();
 
                     b.ToTable("Tags");
+                });
+
+            modelBuilder.Entity("Recipe.Domain.TagAlias", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(35)
+                        .HasColumnType("character varying(35)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .UseCollation("recipe_text");
+
+                    b.Property<Guid>("TagId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TagId");
+
+                    b.ToTable("TagAlias");
                 });
 
             modelBuilder.Entity("Recipe.Domain.TagName", b =>
@@ -318,7 +400,8 @@ namespace Recipe.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .UseCollation("recipe_text");
 
                     b.HasKey("TagId", "Language");
 
@@ -400,6 +483,15 @@ namespace Recipe.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Recipe.Domain.Ingredient", b =>
+                {
+                    b.HasOne("Recipe.Domain.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Recipe.Domain.IngredientAlias", b =>
                 {
                     b.HasOne("Recipe.Domain.Ingredient", null)
@@ -438,8 +530,7 @@ namespace Recipe.Infrastructure.Persistence.Migrations
                     b.HasOne("Recipe.Domain.RecipeType", null)
                         .WithMany()
                         .HasForeignKey("RecipeTypeId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.OwnsOne("Recipe.Domain.Yield", "Yield", b1 =>
                         {
@@ -490,8 +581,7 @@ namespace Recipe.Infrastructure.Persistence.Migrations
                                 .IsRequired();
                         });
 
-                    b.Navigation("Yield")
-                        .IsRequired();
+                    b.Navigation("Yield");
                 });
 
             modelBuilder.Entity("Recipe.Domain.RecipeImage", b =>
@@ -562,11 +652,29 @@ namespace Recipe.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Recipe.Domain.RecipeTypeAlias", b =>
+                {
+                    b.HasOne("Recipe.Domain.RecipeType", null)
+                        .WithMany("Aliases")
+                        .HasForeignKey("RecipeTypeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Recipe.Domain.RecipeTypeName", b =>
                 {
                     b.HasOne("Recipe.Domain.RecipeType", null)
                         .WithMany("Names")
                         .HasForeignKey("RecipeTypeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Recipe.Domain.TagAlias", b =>
+                {
+                    b.HasOne("Recipe.Domain.Tag", null)
+                        .WithMany("Aliases")
+                        .HasForeignKey("TagId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -614,11 +722,15 @@ namespace Recipe.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Recipe.Domain.RecipeType", b =>
                 {
+                    b.Navigation("Aliases");
+
                     b.Navigation("Names");
                 });
 
             modelBuilder.Entity("Recipe.Domain.Tag", b =>
                 {
+                    b.Navigation("Aliases");
+
                     b.Navigation("Names");
                 });
 

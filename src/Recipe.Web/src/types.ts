@@ -1,6 +1,19 @@
 export type Quantity = { value: number | null; maximumValue: number | null };
 export type Yield = { quantity: Quantity; unitId: string };
 export type Lookup = { id: string; name: string };
+export type CatalogueName = { language: string; name: string };
+export type CatalogueLookup = Lookup & {
+  isActive: boolean;
+  sortOrder: number;
+  names?: CatalogueName[];
+  aliases?: CatalogueName[];
+};
+export type ManagedCatalogueEntry = Lookup & {
+  isActive: boolean;
+  sortOrder?: number;
+  names: { language: string; name: string }[];
+  aliases?: CatalogueName[];
+};
 export type Unit = Lookup & {
   symbol: string;
   dimension: string;
@@ -8,11 +21,14 @@ export type Unit = Lookup & {
   forYield: boolean;
 };
 export type Catalogue = {
-  recipeTypes: Lookup[];
-  tags: Lookup[];
+  recipeTypes: CatalogueLookup[];
+  tags: CatalogueLookup[];
   units: Unit[];
 };
 export type Ingredient = Lookup & {
+  status: "PendingReview" | "Active";
+  createdByUserId: string;
+  createdAt: string;
   names: { language: string; name: string }[];
   aliases: { language: string | null; name: string }[];
 };
@@ -21,6 +37,7 @@ export type Entry = {
   clientKey?: string;
   ingredientId: string;
   ingredientName: string;
+  ingredientStatus?: "PendingReview" | "Active";
   quantity: Quantity;
   unitId: string | null;
   amountDescription: string | null;
@@ -37,8 +54,8 @@ export type Step = { id?: string; clientKey?: string; instruction: string };
 export type RecipeForm = {
   name: string;
   description: string | null;
-  recipeTypeId: string;
-  yield: Yield;
+  recipeTypeId: string | null;
+  yield: Yield | null;
   totalTimeMinutes: number | null;
   publicationState: "Draft" | "Published";
   tagIds: string[];
@@ -54,6 +71,7 @@ export type RecipeImage = {
 };
 export type RecipeDetail = RecipeForm & {
   id: string;
+  authorId: string;
   authorName: string;
   createdAt: string;
   updatedAt: string;
@@ -62,7 +80,11 @@ export type RecipeDetail = RecipeForm & {
 export type RecipeSummary = Omit<
   RecipeForm,
   "ingredientGroups" | "cookingSteps"
-> & { id: string; recipeTypeName: string; primaryImageUrl: string | null };
+> & {
+  id: string;
+  recipeTypeName: string | null;
+  primaryImageUrl: string | null;
+};
 export type Page<T> = {
   items: T[];
   total: number;

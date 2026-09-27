@@ -48,7 +48,10 @@ public sealed class RecipeApiTests(PostgresFixture fixture)
         }));
         using var client = factory.CreateClient();
         var input = new SaveIngredientInput([new("sv", "Unauthorized")], []);
-        Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync("/api/ingredients", input, Json)).StatusCode);
+        var pendingId = await CreatedId(await client.PostAsJsonAsync("/api/ingredients", input, Json));
+        var pending = (await client.GetFromJsonAsync<IngredientItem>($"/api/ingredients/{pendingId}", Json))!;
+        Assert.Equal(IngredientStatus.PendingReview, pending.Status);
+        Assert.Equal(userId, pending.CreatedByUserId);
         var ingredient = await Ingredient(client, "Zucchini");
         Assert.Equal(HttpStatusCode.Forbidden, (await client.PutAsJsonAsync($"/api/ingredients/{ingredient.Id}", input, Json)).StatusCode);
     }
@@ -69,9 +72,9 @@ public sealed class RecipeApiTests(PostgresFixture fixture)
     {
         using var client = Client(); var c = await Catalogue(client); var ingredient = await Ingredient(client, "Persilja");
         var input = Input(c, ingredient);
-        var invalid = input with { Yield = new(new(null, null), input.Yield.UnitId) };
+        var invalid = input with { Yield = new(new(null, null), input.Yield!.UnitId) };
         Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/recipes", invalid, Json)).StatusCode);
-        invalid = input with { Yield = new(new(4, 2), input.Yield.UnitId) };
+        invalid = input with { Yield = new(new(4, 2), input.Yield!.UnitId) };
         Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/recipes", invalid, Json)).StatusCode);
         invalid = input with { Yield = new(new(4, null), c.Units.First(u => !u.ForYield).Id) };
         Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/recipes", invalid, Json)).StatusCode);
@@ -109,7 +112,7 @@ public sealed class RecipeApiTests(PostgresFixture fixture)
         using var client = Client(); var c = await Catalogue(client); var ingredient = await Ingredient(client, "Persilja");
         var id = await CreatedId(await client.PostAsJsonAsync("/api/recipes", Input(c, ingredient), Json));
         var original = await Detail(client, id);
-        Assert.Equal(24, original.Yield.Quantity.MaximumValue);
+        Assert.Equal(24, original.Yield!.Quantity.MaximumValue);
         var entry = Assert.Single(original.IngredientGroups[0].Ingredients);
         Assert.Equal(3, entry.Quantity.MaximumValue); Assert.Equal(ingredient.Id, entry.IngredientId);
         var update = Edit(original);

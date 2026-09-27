@@ -14,7 +14,7 @@ public class ServiceTests
         var id = await service.Save(null, input);
         Assert.Equal(store.Recipe!.Id, id); Assert.Equal(store.Id, store.Recipe.AuthorId);
         Assert.Single(store.Recipe.IngredientGroups); Assert.Single(store.Recipe.Tags);
-        Assert.Equal(24, store.Recipe.Yield.Quantity.MaximumValue);
+        Assert.Equal(24, store.Recipe.Yield!.Quantity.MaximumValue);
     }
     [Fact]
     public async Task Unknown_ingredient_and_invalid_unit_are_not_saved()
@@ -36,12 +36,16 @@ public class ServiceTests
         Assert.False(store.Saved);
     }
     [Fact]
-    public async Task Only_administrator_can_change_ingredient_names()
+    public async Task Authors_create_pending_but_only_administrators_edit_catalogue()
     {
         var store = new Store { Admin = false }; var service = new CatalogueService(store, store);
         var input = new SaveIngredientInput([new("sv", "Purjolök")], [new(null, "leek")]);
-        await Assert.ThrowsAsync<ForbiddenException>(() => service.Save(null, input)); Assert.False(store.Saved);
+        var pendingId = await service.Save(null, input);
+        Assert.Equal(IngredientStatus.PendingReview, store.Ingredient!.Status);
+        Assert.Equal(store.Id, store.Ingredient.CreatedByUserId);
+        await Assert.ThrowsAsync<ForbiddenException>(() => service.Save(pendingId, input));
         store.Admin = true; await service.Save(null, input); Assert.True(store.Saved);
+        Assert.Equal(IngredientStatus.Active, store.Ingredient!.Status);
         Assert.Equal("leek", Assert.Single(store.Ingredient!.Aliases).Name);
     }
     [Fact]
@@ -59,12 +63,21 @@ public class ServiceTests
         public SaveRecipeInput Valid() => new("Test", null, TypeId, new(new(20, 24), UnitId), null, PublicationState.Draft, [], [], []);
         public Task<User?> FindUser(Guid id, CancellationToken ct) => Task.FromResult<User?>(new() { Id = Id, IsAdministrator = Admin });
         public Task<CatalogueData> Read(string language, CancellationToken ct) => Task.FromResult(new CatalogueData([new(TypeId, "Type")], [new(TagId, "Tag")], [new(UnitId, "Piece", "pc", "Count", true, true)]));
+        public Task<List<TagItem>> ListTags(string? query, bool? isActive, string language, CancellationToken ct) => throw new NotSupportedException();
+        public Task<List<RecipeTypeItem>> ListRecipeTypes(string? query, bool? isActive, string language, CancellationToken ct) => throw new NotSupportedException();
+        public Task<Tag?> FindTag(Guid id, CancellationToken ct) => throw new NotSupportedException();
+        public Task<RecipeType?> FindRecipeType(Guid id, CancellationToken ct) => throw new NotSupportedException();
+        public void Add(Tag tag) => throw new NotSupportedException();
+        public void Add(RecipeType type) => throw new NotSupportedException();
         public Task<HashSet<Guid>> ExistingIngredients(IEnumerable<Guid> ids, CancellationToken ct) => Task.FromResult(new HashSet<Guid> { IngredientId });
+        public Task<List<LookupItem>> PendingIngredients(IEnumerable<Guid> ids, CancellationToken ct) => Task.FromResult(new List<LookupItem>());
         public void Add(RecipeEntity recipe) => Recipe = recipe;
         public void Add(Ingredient ingredient) => Ingredient = ingredient;
         public Task Save(CancellationToken ct) { Saved = true; return Task.CompletedTask; }
         public Task<RecipeEntity?> Find(Guid id, CancellationToken ct) => Task.FromResult(Recipe);
         public Task<Ingredient?> FindIngredient(Guid id, CancellationToken ct) => Task.FromResult(Ingredient);
+        public Task<Ingredient?> FindIngredientForAdministration(Guid id, CancellationToken ct) => Task.FromResult(Ingredient);
+        public Task<List<IngredientItem>> ListIngredients(string? query, IngredientStatus? status, string language, CancellationToken ct) => throw new NotSupportedException();
         public Task<RecipeDetail?> Read(Guid id, string language, CancellationToken ct) => throw new NotSupportedException();
         public Task<Page<RecipeSummary>> Search(RecipeSearch search, string language, CancellationToken ct) => throw new NotSupportedException();
         public Task<List<IngredientItem>> SearchIngredients(string? query, string language, CancellationToken ct) => throw new NotSupportedException();

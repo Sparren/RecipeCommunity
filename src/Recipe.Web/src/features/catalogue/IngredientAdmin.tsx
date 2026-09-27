@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api";
 import type { Ingredient } from "../../types";
-import { IngredientPicker } from "../../components/IngredientPicker";
 
 type EditIngredient = Pick<Ingredient, "names" | "aliases"> & { id?: string };
 const blank = (): EditIngredient => ({
@@ -18,6 +17,37 @@ export function IngredientAdmin({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("");
+  const [items, setItems] = useState<Ingredient[]>([]);
+  const [listError, setListError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    const abort = new AbortController();
+    setLoading(true);
+    setListError("");
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams({ query, language: "sv" });
+      if (status) params.set("status", status);
+      api<Ingredient[]>("/ingredients/catalogue?" + params, {
+        signal: abort.signal,
+      })
+        .then((data) => {
+          if (!abort.signal.aborted) setItems(data);
+        })
+        .catch((e) => {
+          if (!abort.signal.aborted) setListError(e.message);
+        })
+        .finally(() => {
+          if (!abort.signal.aborted) setLoading(false);
+        });
+    }, 150);
+    return () => {
+      clearTimeout(timer);
+      abort.abort();
+    };
+  }, [query, status, revision]);
   const dirty = JSON.stringify(form) !== JSON.stringify(baseline);
   useEffect(() => {
     setDirty(dirty);
@@ -46,6 +76,7 @@ export function IngredientAdmin({
       setBaseline(saved);
       setDirty(false);
       setNotice("Ingrediensen är sparad och kan väljas i recept.");
+      setRevision((r) => r + 1);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -62,11 +93,56 @@ export function IngredientAdmin({
         </div>
       </div>
       <section className="panel">
-        <IngredientPicker
-          label="Hitta en ingrediens att redigera"
-          onSelect={(i) => load(i)}
-        />
+        <div className="columns">
+          <label>
+            Sök i katalogen
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Namn, översättning eller alias"
+            />
+          </label>
+          <label>
+            Statusfilter
+            <select value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="">Alla</option>
+              <option value="Active">Aktiv</option>
+              <option value="PendingReview">Väntar på granskning</option>
+            </select>
+          </label>
+        </div>
         <button onClick={() => load(blank())}>+ Ny ingrediens</button>
+        {listError && (
+          <p role="alert" className="error">
+            {listError}
+          </p>
+        )}
+        <p aria-live="polite">
+          {loading ? "Läser katalogen…" : `${items.length} ingredienser`}
+        </p>
+        {!loading && !listError && (
+          <ul
+            className="catalogue-list"
+            aria-label="Ingredienskatalogens lista"
+          >
+            {items.map((item) => (
+              <li key={item.id}>
+                <button
+                  aria-pressed={form.id === item.id}
+                  onClick={() => load(item)}
+                >
+                  <span>{item.name}</span>
+                  <small>
+                    {item.status === "Active"
+                      ? "Aktiv"
+                      : "Väntar på granskning"}
+                  </small>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
       <form onSubmit={save} className="panel">
         <fieldset disabled={busy} className="plain-fieldset">

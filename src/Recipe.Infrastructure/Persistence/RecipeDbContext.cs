@@ -21,7 +21,7 @@ public sealed class RecipeDbContext(DbContextOptions<RecipeDbContext> options) :
         var recipe = model.Entity<RecipeEntity>();
         recipe.ToTable("Recipes", t =>
         {
-            t.HasCheckConstraint("CK_Recipe_Yield", "\"YieldValue\" > 0 AND (\"YieldMaximumValue\" IS NULL OR \"YieldMaximumValue\" > \"YieldValue\")");
+            t.HasCheckConstraint("CK_Recipe_Yield", "(\"YieldValue\" IS NULL AND \"YieldMaximumValue\" IS NULL AND \"YieldUnitId\" IS NULL) OR (\"YieldValue\" IS NOT NULL AND \"YieldValue\" > 0 AND \"YieldUnitId\" IS NOT NULL AND (\"YieldMaximumValue\" IS NULL OR \"YieldMaximumValue\" > \"YieldValue\"))");
             t.HasCheckConstraint("CK_Recipe_Time", "\"TotalTimeMinutes\" IS NULL OR \"TotalTimeMinutes\" > 0");
         });
         recipe.Property(x => x.Name).HasMaxLength(200).UseCollation("recipe_text");
@@ -39,7 +39,7 @@ public sealed class RecipeDbContext(DbContextOptions<RecipeDbContext> options) :
             });
             y.Navigation(x => x.Quantity).IsRequired();
         });
-        recipe.Navigation(x => x.Yield).IsRequired();
+        recipe.Navigation(x => x.Yield).IsRequired(false);
         recipe.HasMany(x => x.IngredientGroups).WithOne().HasForeignKey(x => x.RecipeId).OnDelete(DeleteBehavior.Cascade);
         recipe.HasMany(x => x.CookingSteps).WithOne().HasForeignKey(x => x.RecipeId).OnDelete(DeleteBehavior.Cascade);
         recipe.HasMany(x => x.Images).WithOne().HasForeignKey(x => x.RecipeId).OnDelete(DeleteBehavior.Cascade);
@@ -63,6 +63,10 @@ public sealed class RecipeDbContext(DbContextOptions<RecipeDbContext> options) :
         item.HasIndex(x => new { x.IngredientGroupId, x.SortOrder });
         model.Entity<RecipeImage>().HasIndex(x => x.RecipeId).IsUnique().HasFilter("\"IsPrimary\" = TRUE");
 
+        model.Entity<Ingredient>().Property(x => x.Status).HasConversion<string>();
+        model.Entity<Ingredient>().HasOne<User>().WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<Ingredient>().HasIndex(x => new { x.Status, x.CreatedByUserId });
+        model.Entity<Ingredient>().ToTable("Ingredients", t => t.HasCheckConstraint("CK_Ingredient_Status", "\"Status\" IN ('Active', 'PendingReview')"));
         model.Entity<Ingredient>().HasMany(x => x.Names).WithOne().HasForeignKey(x => x.IngredientId);
         model.Entity<Ingredient>().HasMany(x => x.Aliases).WithOne().HasForeignKey(x => x.IngredientId);
         model.Entity<IngredientName>().HasKey(x => new { x.IngredientId, x.Language });
@@ -71,11 +75,20 @@ public sealed class RecipeDbContext(DbContextOptions<RecipeDbContext> options) :
         model.Entity<IngredientAlias>().Property(x => x.Name).HasMaxLength(200).UseCollation("recipe_text");
         model.Entity<IngredientAlias>().Property(x => x.Language).HasMaxLength(35);
         model.Entity<RecipeType>().HasIndex(x => x.Code).IsUnique();
+        model.Entity<RecipeType>().ToTable("RecipeTypes", t => t.HasCheckConstraint("CK_RecipeType_SortOrder", "\"SortOrder\" >= 0"));
         model.Entity<RecipeType>().HasMany(x => x.Names).WithOne().HasForeignKey(x => x.RecipeTypeId);
+        model.Entity<RecipeType>().HasMany(x => x.Aliases).WithOne().HasForeignKey(x => x.RecipeTypeId);
+        model.Entity<RecipeTypeAlias>().Property(x => x.Name).HasMaxLength(200).UseCollation("recipe_text");
+        model.Entity<RecipeTypeAlias>().Property(x => x.Language).HasMaxLength(35);
+        model.Entity<RecipeTypeName>().Property(x => x.Name).UseCollation("recipe_text");
         model.Entity<RecipeTypeName>().HasKey(x => new { x.RecipeTypeId, x.Language });
         model.Entity<Tag>().HasIndex(x => x.Code).IsUnique();
         model.Entity<Tag>().HasMany(x => x.Names).WithOne().HasForeignKey(x => x.TagId);
+        model.Entity<Tag>().HasMany(x => x.Aliases).WithOne().HasForeignKey(x => x.TagId);
+        model.Entity<TagAlias>().Property(x => x.Name).HasMaxLength(200).UseCollation("recipe_text");
+        model.Entity<TagAlias>().Property(x => x.Language).HasMaxLength(35);
         model.Entity<TagName>().HasKey(x => new { x.TagId, x.Language });
+        model.Entity<TagName>().Property(x => x.Name).UseCollation("recipe_text");
         model.Entity<Unit>().HasIndex(x => x.Code).IsUnique();
         model.Entity<Unit>().Property(x => x.Dimension).HasConversion<string>();
         model.Entity<Unit>().HasMany(x => x.Names).WithOne().HasForeignKey(x => x.UnitId);

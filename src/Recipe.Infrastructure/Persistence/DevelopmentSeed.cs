@@ -33,6 +33,7 @@ public static class DevelopmentSeed
             Ingredient("Smör", "Butter"), Ingredient("Vetemjöl", "Wheat flour", "flour"), Ingredient("Ägg", "Egg"),
             Ingredient("Mjölk", "Milk"), Ingredient("Salt", "Salt"), Ingredient("Persilja", "Parsley"), Ingredient("Vatten", "Water"), Ingredient("Socker", "Sugar")
         };
+        foreach (var ingredient in ingredients) { ingredient.Status = IngredientStatus.Active; ingredient.CreatedByUserId = UserId; }
         db.RecipeTypes.AddRange(types); db.Tags.AddRange(tags); db.Units.AddRange(units); db.Ingredients.AddRange(ingredients);
         Guid U(string code) => units.Single(u => u.Code == code).Id;
         Guid I(string name) => ingredients.Single(i => i.Names.Any(n => n.Name == name)).Id;

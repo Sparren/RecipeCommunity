@@ -1,0 +1,155 @@
+.recipe-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+@page {
+  size: A4 portrait;
+  margin: 14mm;
+}
+
+@media print {
+  html:has(.recipe-detail) {
+    background: white;
+  }
+  body:has(.recipe-detail) {
+    background: white;
+    color: black;
+    font:
+      10.5pt/1.3 Arial,
+      sans-serif;
+  }
+  body:has(.recipe-detail) header,
+  body:has(.recipe-detail) footer,
+  body:has(.recipe-detail) button,
+  body:has(.recipe-detail) nav,
+  body:has(.recipe-detail) input,
+  body:has(.recipe-detail) select,
+  body:has(.recipe-detail) textarea,
+  .recipe-detail .recipe-actions,
+  .recipe-detail .recipe-gallery {
+    display: none !important;
+  }
+  body:has(.recipe-detail) main {
+    max-width: none;
+    padding: 0;
+    margin: 0;
+  }
+  .recipe-detail {
+    overflow-wrap: anywhere;
+    orphans: 3;
+    widows: 3;
+  }
+  /* Block flow fragments predictably; screen grids/cards waste space on paper. */
+  .recipe-detail .page-heading,
+  .recipe-detail .detail-columns,
+  .recipe-detail .panel {
+    display: block;
+    background: none;
+    box-shadow: none;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+    break-inside: auto;
+  }
+  .recipe-detail h1 {
+    font:
+      bold 22pt/1.1 Georgia,
+      serif;
+    margin: 0 0 3mm;
+  }
+  .recipe-detail h2 {
+    font-size: 13pt;
+    margin: 4mm 0 2mm;
+  }
+  .recipe-detail h3 {
+    font-size: 11pt;
+    margin: 3mm 0 1mm;
+  }
+  .recipe-detail h1,
+  .recipe-detail h2,
+  .recipe-detail h3,
+  .recipe-detail .eyebrow {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  .recipe-detail p {
+    margin: 0 0 2mm;
+  }
+  .recipe-detail .lead,
+  .recipe-detail .meta,
+  .recipe-detail .eyebrow {
+    font-size: inherit;
+    color: black;
+    letter-spacing: normal;
+  }
+  .recipe-detail .chips {
+    display: block;
+    margin: 2mm 0;
+  }
+  .recipe-detail .chips span {
+    background: none;
+    border: 0;
+    padding: 0;
+    margin-right: 3mm;
+    font-size: 9pt;
+  }
+  .recipe-detail .hero-image {
+    display: block;
+    width: auto;
+    height: auto;
+    max-width: 80mm;
+    max-height: 40mm;
+    object-fit: contain;
+    border-radius: 0;
+    margin: 3mm 0;
+    break-inside: avoid;
+  }
+  .recipe-detail .ingredients {
+    margin: 0 0 2mm;
+    padding: 0;
+  }
+  .recipe-detail .ingredients li {
+    display: block;
+    padding: 0.35mm 0;
+    border: 0;
+    font-size: inherit;
+    orphans: 2;
+    widows: 2;
+  }
+  .recipe-detail .ingredients .amount {
+    display: inline;
+    min-width: 0;
+    margin-right: 2mm;
+  }
+  .recipe-detail .ingredients li > div {
+    display: inline;
+  }
+  .recipe-detail .ingredients small {
+    font-size: 9pt;
+    color: black;
+    margin-left: 4mm;
+  }
+  .recipe-detail .steps {
+    margin: 0;
+    padding-left: 6mm;
+  }
+  .recipe-detail .steps li {
+    display: list-item;
+    padding: 0 0 1.8mm 1mm;
+    break-inside: auto;
+  }
+  .recipe-detail .steps li::marker {
+    color: black;
+  }
+  /* Only bounded small blocks get keep-together hints. Large groups/steps flow. */
+  .recipe-detail .print-keep-together {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .recipe-detail .steps li.print-keep-together {
+    break-inside: avoid;
+  }
+}

@@ -47,4 +47,20 @@ public class QuantityTests
         r.IngredientGroups[0].Ingredients.Add(new() { IngredientId = Guid.NewGuid() });
         r.CookingSteps.Add(new() { Instruction = "Cook" }); r.Validate();
     }
+
+    [Fact]
+    public void Unnamed_draft_can_omit_type_yield_ingredients_and_steps()
+    {
+        var draft = new RecipeEntity { AuthorId = Guid.NewGuid(), IngredientGroups = [new()] };
+        draft.Validate();
+        Assert.Empty(draft.Name); Assert.Null(draft.Yield); Assert.Null(draft.RecipeTypeId);
+        draft.PublicationState = PublicationState.Published;
+        Assert.Throws<DomainException>(draft.Validate);
+        draft.Name = "Named";
+        Assert.Throws<DomainException>(draft.Validate);
+        draft.RecipeTypeId = Guid.NewGuid();
+        Assert.Throws<DomainException>(draft.Validate);
+        draft.Yield = new(new(2), Guid.NewGuid());
+        Assert.Throws<DomainException>(draft.Validate);
+    }
 }

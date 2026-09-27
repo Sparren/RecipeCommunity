@@ -45,22 +45,36 @@ app.MapGet("/api/me", async (ICurrentUser current, ICatalogueStore store, Cancel
     return Results.Ok(new { user.Id, user.DisplayName, user.IsAdministrator });
 });
 app.MapGet("/api/catalogue", async (ICatalogueStore store, CancellationToken ct, string language = "sv") => await store.Read(language, ct));
+app.MapGet("/api/tags", async (ICatalogueStore store, CancellationToken ct, string? query = null, bool? isActive = null, string language = "sv") => await store.ListTags(query, isActive, language, ct));
+app.MapPost("/api/tags", async (SaveTagInput input, CatalogueService service, CancellationToken ct) =>
+{ var id = await service.SaveTag(null, input, ct); return Results.Created("/api/tags", new { id }); });
+app.MapPut("/api/tags/{id:guid}", async (Guid id, SaveTagInput input, CatalogueService service, CancellationToken ct) =>
+{ await service.SaveTag(id, input, ct); return Results.Ok(new { id }); });
+app.MapGet("/api/recipe-types", async (ICatalogueStore store, CancellationToken ct, string? query = null, bool? isActive = null, string language = "sv") => await store.ListRecipeTypes(query, isActive, language, ct));
+app.MapPost("/api/recipe-types", async (SaveRecipeTypeInput input, CatalogueService service, CancellationToken ct) =>
+{ var id = await service.SaveRecipeType(null, input, ct); return Results.Created("/api/recipe-types", new { id }); });
+app.MapPut("/api/recipe-types/{id:guid}", async (Guid id, SaveRecipeTypeInput input, CatalogueService service, CancellationToken ct) =>
+{ await service.SaveRecipeType(id, input, ct); return Results.Ok(new { id }); });
 app.MapGet("/api/ingredients", async (ICatalogueStore store, CancellationToken ct, string? query = null, string language = "sv") => await store.SearchIngredients(query, language, ct));
-app.MapGet("/api/ingredients/{id:guid}", async (Guid id, ICatalogueStore store, CancellationToken ct) =>
+app.MapGet("/api/ingredients/catalogue", async (ICatalogueStore store, CancellationToken ct, string? query = null, IngredientStatus? status = null, string language = "sv") => await store.ListIngredients(query, status, language, ct));
+app.MapGet("/api/ingredients/{id:guid}", async (Guid id, ICatalogueStore store, ICurrentUser currentUser, CancellationToken ct, string language = "sv") =>
 {
-    var ingredient = await store.FindIngredient(id, ct) ?? throw new NotFoundException();
-    return new { ingredient.Id, Names = ingredient.Names.Select(n => new NameInput(n.Language, n.Name)), Aliases = ingredient.Aliases.Select(a => new AliasInput(a.Language, a.Name)) };
+    var administrator = (await store.FindUser(currentUser.Id, ct))?.IsAdministrator == true;
+    var ingredient = (administrator ? await store.FindIngredientForAdministration(id, ct) : await store.FindIngredient(id, ct)) ?? throw new NotFoundException();
+    var name = ingredient.Names.OrderBy(n => n.Language == language ? 0 : n.Language == "sv" ? 1 : n.Language == "en" ? 2 : 3).ThenBy(n => n.Language).First().Name;
+    return new IngredientItem(ingredient.Id, name, ingredient.Names.Select(n => new NameInput(n.Language, n.Name)).ToList(), ingredient.Aliases.Select(a => new AliasInput(a.Language, a.Name)).ToList(), ingredient.Status, ingredient.CreatedByUserId, ingredient.CreatedAt);
 });
 app.MapPost("/api/ingredients", async (SaveIngredientInput input, CatalogueService service, CancellationToken ct) =>
 { var id = await service.Save(null, input, ct); return Results.Created($"/api/ingredients/{id}", new { id }); });
 app.MapPut("/api/ingredients/{id:guid}", async (Guid id, SaveIngredientInput input, CatalogueService service, CancellationToken ct) =>
 { await service.Save(id, input, ct); return Results.NoContent(); });
 app.MapGet("/api/recipes", async (HttpRequest request, IRecipeStore store, CancellationToken ct,
-    string? name = null, Guid? recipeTypeId = null, string language = "sv", int page = 1, int pageSize = 20) =>
+    string? name = null, Guid? recipeTypeId = null, string language = "sv", int page = 1, int pageSize = 20,
+    RecipeListScope scope = RecipeListScope.Published, PublicationState? publicationState = null) =>
 {
     Guid[] Ids(string key) => request.Query[key].SelectMany(v => (v ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
         .Select(v => Guid.TryParse(v, out var id) ? id : throw new InputException(key, "Invalid identifier.")).Distinct().ToArray();
-    return await store.Search(new(name, recipeTypeId, Ids("ingredientIds"), Ids("tagIds"), page, pageSize), language, ct);
+    return await store.Search(new(name, recipeTypeId, Ids("ingredientIds"), Ids("tagIds"), page, pageSize, scope, publicationState), language, ct);
 });
 app.MapGet("/api/recipes/{id:guid}", async (Guid id, IRecipeStore store, CancellationToken ct, string language = "sv") =>
     await store.Read(id, language, ct) ?? throw new NotFoundException());

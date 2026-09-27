@@ -1,3 +1,36 @@
+dialog.ingredient-dialog {
+  max-width: 480px;
+  width: calc(100% - 2rem);
+  border: 1px solid #ccd5cc;
+  border-radius: 12px;
+  padding: 1.5rem;
+  color: #233c32;
+}
+dialog::backdrop {
+  background: #15241b88;
+}
+.ingredient-dialog .form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+.catalogue-list {
+  list-style: none;
+  padding: 0;
+  max-height: 400px;
+  overflow: auto;
+}
+.catalogue-list button {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  text-align: left;
+  margin-bottom: 0.3rem;
+}
+.catalogue-list button[aria-pressed="true"] {
+  background: #e8efe1;
+}
 :root {
   font-family:
     Inter,
@@ -70,6 +103,7 @@ header {
 }
 header nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.35rem;
 }
 header nav button {
@@ -101,6 +135,23 @@ header nav .active {
   color: #68786d;
   margin-left: auto;
   white-space: nowrap;
+}
+.mode-navigation {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+.administration-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 1rem;
+}
+.publication-notice {
+  border-left: 4px solid #b78025;
+  background: #fff6df;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
 }
 main {
   max-width: 1120px;
@@ -212,6 +263,15 @@ input[type="radio"] {
 }
 .tags label:has(input:checked) {
   background: #e8efe1;
+}
+.tags label:has(input[type="search"]) {
+  flex-basis: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  max-width: 28rem;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
 }
 .chips {
   display: flex;
@@ -527,6 +587,7 @@ footer {
     margin: 0.4rem 0;
   }
   header {
+    flex-wrap: wrap;
     gap: 1rem;
     padding: 1rem;
   }

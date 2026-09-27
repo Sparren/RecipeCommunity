@@ -8,8 +8,8 @@ public sealed class Recipe
     public Guid AuthorId { get; set; }
     public string Name { get; set; } = "";
     public string? Description { get; set; }
-    public Guid RecipeTypeId { get; set; }
-    public Yield Yield { get; set; } = null!;
+    public Guid? RecipeTypeId { get; set; }
+    public Yield? Yield { get; set; }
     public int? TotalTimeMinutes { get; set; }
     public PublicationState PublicationState { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
@@ -21,20 +21,26 @@ public sealed class Recipe
 
     public void Validate()
     {
-        if (string.IsNullOrWhiteSpace(Name) || Name.Length > 200)
-            throw new DomainException("Recipe name is required and must be at most 200 characters.");
-        if (AuthorId == Guid.Empty || RecipeTypeId == Guid.Empty || Yield is null)
-            throw new DomainException("Author, recipe type and yield are required.");
+        if (Name.Length > 200) throw new DomainException("Recipe name must be at most 200 characters.");
+        if (AuthorId == Guid.Empty) throw new DomainException("Author is required.");
+        if (RecipeTypeId == Guid.Empty) throw new DomainException("An entered recipe type must be valid.");
         if (TotalTimeMinutes is <= 0) throw new DomainException("Total time must be positive.");
         if (!Enum.IsDefined(PublicationState)) throw new DomainException("Unknown publication state.");
         if (IngredientGroups.Count == 0) throw new DomainException("A recipe requires at least one ingredient group.");
         foreach (var ingredient in IngredientGroups.SelectMany(g => g.Ingredients)) ingredient.Validate();
         if (CookingSteps.Any(s => string.IsNullOrWhiteSpace(s.Instruction)))
             throw new DomainException("Cooking steps cannot be blank.");
-        if (PublicationState == PublicationState.Published &&
-            (!IngredientGroups.Any(g => g.Ingredients.Count > 0) || CookingSteps.Count == 0))
-            throw new DomainException("A published recipe needs ingredients and cooking steps.");
         if (Images.Count(i => i.IsPrimary) > 1) throw new DomainException("Only one image may be primary.");
+        if (PublicationState == PublicationState.Published) ValidatePublication();
+    }
+
+    public void ValidatePublication()
+    {
+        if (string.IsNullOrWhiteSpace(Name)) throw new DomainException("A published recipe needs a name.");
+        if (RecipeTypeId is null) throw new DomainException("A published recipe needs a recipe type.");
+        if (Yield is null) throw new DomainException("A published recipe needs a yield.");
+        if (!IngredientGroups.Any(g => g.Ingredients.Count > 0) || CookingSteps.Count == 0)
+            throw new DomainException("A published recipe needs ingredients and cooking steps.");
     }
 }
 

@@ -2,19 +2,28 @@ import { useEffect, useState } from "react";
 import { api } from "../../api";
 import type { Catalogue, Ingredient, Page, RecipeSummary } from "../../types";
 import { IngredientPicker } from "../../components/IngredientPicker";
+import {
+  matchesCatalogue,
+  RecipeTypeSelect,
+} from "../../components/RecipeTypeSelect";
 import { formatQuantity } from "./format";
 
 export function RecipeList({
   catalogue,
   navigate,
+  scope = "Published",
 }: {
   catalogue: Catalogue;
   navigate: (path: string) => void;
+  scope?: "Published" | "Mine";
 }) {
   const [name, setName] = useState("");
   const [type, setType] = useState("");
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [tags, setTags] = useState<string[]>([]);
+  const [tagQuery, setTagQuery] = useState("");
+  const [filterReset, setFilterReset] = useState(0);
+  const [publicationState, setPublicationState] = useState("");
   const [page, setPage] = useState(1);
   const [results, setResults] = useState<Page<RecipeSummary>>();
   const [error, setError] = useState("");
@@ -23,7 +32,9 @@ export function RecipeList({
     const abort = new AbortController();
     setLoading(true);
     const timer = setTimeout(() => {
-      const query = new URLSearchParams({ name, page: String(page) });
+      const query = new URLSearchParams({ name, page: String(page), scope });
+      if (scope === "Mine" && publicationState)
+        query.set("publicationState", publicationState);
       if (type) query.set("recipeTypeId", type);
       ingredients.forEach((i) => query.append("ingredientIds", i.id));
       tags.forEach((t) => query.append("tagIds", t));
@@ -43,26 +54,54 @@ export function RecipeList({
       clearTimeout(timer);
       abort.abort();
     };
-  }, [name, type, ingredients, tags, page]);
+  }, [name, type, ingredients, tags, page, scope, publicationState]);
   return (
     <>
       <div className="page-heading">
         <div>
-          <p className="eyebrow">DIN EGEN RECEPTSAMLING</p>
-          <h1>Vad vill du laga?</h1>
-          <p>Spara idéerna. Hitta favoriterna. Laga något gott.</p>
+          <p className="eyebrow">
+            {scope === "Mine" ? "SKAPA & UTFORSKA" : "HITTA & LAGA"}
+          </p>
+          <h1>{scope === "Mine" ? "Mina recept" : "Vad vill du laga?"}</h1>
+          <p>
+            {scope === "Mine"
+              ? "Samla idéer, arbeta vidare med utkast och publicera dina recept."
+              : "Hitta ett publicerat recept, läs det och ta med det till köket."}
+          </p>
         </div>
-        <button className="primary" onClick={() => navigate("/new")}>
-          + Nytt recept
-        </button>
+        {scope === "Mine" && (
+          <button className="primary" onClick={() => navigate("/create/new")}>
+            + Nytt recept
+          </button>
+        )}
       </div>
       <section className="panel search-panel">
+        {scope === "Mine" && (
+          <label>
+            Receptstatus
+            <select
+              value={publicationState}
+              onChange={(e) => {
+                setPublicationState(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">Alla mina recept</option>
+              <option value="Draft">Utkast</option>
+              <option value="Published">Publicerade</option>
+            </select>
+          </label>
+        )}
         <div className="columns">
           <label>
             Receptnamn
             <input
               type="search"
-              placeholder="Sök bland dina recept"
+              placeholder={
+                scope === "Mine"
+                  ? "Sök bland dina recept"
+                  : "Sök bland publicerade recept"
+              }
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
@@ -70,23 +109,16 @@ export function RecipeList({
               }}
             />
           </label>
-          <label>
-            Recepttyp
-            <select
-              value={type}
-              onChange={(e) => {
-                setType(e.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="">Alla typer</option>
-              {catalogue.recipeTypes.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <RecipeTypeSelect
+            key={filterReset}
+            items={catalogue.recipeTypes}
+            value={type}
+            emptyLabel="Alla typer"
+            onChange={(id) => {
+              setType(id);
+              setPage(1);
+            }}
+          />
         </div>
         <IngredientPicker
           label="Ingredienser — alla valda ska finnas"
@@ -113,23 +145,34 @@ export function RecipeList({
         </div>
         <fieldset className="tags">
           <legend>Taggar — minst en vald ska finnas</legend>
-          {catalogue.tags.map((t) => (
-            <label key={t.id}>
-              <input
-                type="checkbox"
-                checked={tags.includes(t.id)}
-                onChange={(e) => {
-                  setTags(
-                    e.target.checked
-                      ? [...tags, t.id]
-                      : tags.filter((id) => id !== t.id),
-                  );
-                  setPage(1);
-                }}
-              />
-              {t.name}
-            </label>
-          ))}
+          <label>
+            Sök taggar att filtrera
+            <input
+              type="search"
+              value={tagQuery}
+              onChange={(e) => setTagQuery(e.target.value)}
+              placeholder="Namn eller alias"
+            />
+          </label>
+          {catalogue.tags
+            .filter((t) => tags.includes(t.id) || matchesCatalogue(t, tagQuery))
+            .map((t) => (
+              <label key={t.id}>
+                <input
+                  type="checkbox"
+                  checked={tags.includes(t.id)}
+                  onChange={(e) => {
+                    setTags(
+                      e.target.checked
+                        ? [...tags, t.id]
+                        : tags.filter((id) => id !== t.id),
+                    );
+                    setPage(1);
+                  }}
+                />
+                {t.name}
+              </label>
+            ))}
         </fieldset>
         <button
           className="quiet"
@@ -138,6 +181,9 @@ export function RecipeList({
             setType("");
             setIngredients([]);
             setTags([]);
+            setTagQuery("");
+            setFilterReset((value) => value + 1);
+            setPublicationState("");
             setPage(1);
           }}
         >
@@ -165,7 +211,9 @@ export function RecipeList({
           <button
             key={r.id}
             className="recipe-card"
-            onClick={() => navigate(`/recipes/${r.id}`)}
+            onClick={() =>
+              navigate(`${scope === "Mine" ? "/create" : ""}/recipes/${r.id}`)
+            }
           >
             {r.primaryImageUrl ? (
               <img src={r.primaryImageUrl} alt="" />
@@ -179,11 +227,18 @@ export function RecipeList({
                 {r.recipeTypeName}
                 {r.publicationState === "Draft" && " · UTKAST"}
               </span>
-              <h2>{r.name}</h2>
+              <h2>{r.name || "Namnlöst recept"}</h2>
               <p>{r.description}</p>
               <div className="meta">
-                {formatQuantity(r.yield.quantity)}{" "}
-                {catalogue.units.find((u) => u.id === r.yield.unitId)?.symbol}
+                {r.yield && (
+                  <>
+                    Ger: {formatQuantity(r.yield.quantity)}{" "}
+                    {
+                      catalogue.units.find((u) => u.id === r.yield?.unitId)
+                        ?.symbol
+                    }
+                  </>
+                )}
                 {r.totalTimeMinutes && ` · ${r.totalTimeMinutes} min`}
               </div>
             </div>

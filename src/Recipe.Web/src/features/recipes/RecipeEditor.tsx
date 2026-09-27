@@ -10,6 +10,10 @@ import type {
 import { IngredientPicker } from "../../components/IngredientPicker";
 import { QuantityFields } from "../../components/QuantityFields";
 import { move, OrderButtons } from "../../components/OrderButtons";
+import {
+  matchesCatalogue,
+  RecipeTypeSelect,
+} from "../../components/RecipeTypeSelect";
 import { ImageEditor } from "./ImageEditor";
 
 export function RecipeEditor({
@@ -28,8 +32,8 @@ export function RecipeEditor({
   const initial: RecipeForm = recipe ?? {
     name: "",
     description: "",
-    recipeTypeId: "",
-    yield: { quantity: { value: null, maximumValue: null }, unitId: "" },
+    recipeTypeId: null,
+    yield: null,
     totalTimeMinutes: null,
     publicationState: "Draft",
     tagIds: [],
@@ -39,8 +43,17 @@ export function RecipeEditor({
   const [form, setForm] = useState<RecipeForm>(initial);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [tagQuery, setTagQuery] = useState("");
   const [imageDirty, setImageDirty] = useState(false);
   const contentDirty = JSON.stringify(form) !== JSON.stringify(initial);
+  const pendingIngredients = [
+    ...new Map(
+      form.ingredientGroups
+        .flatMap((g) => g.ingredients)
+        .filter((i) => i.ingredientStatus === "PendingReview")
+        .map((i) => [i.ingredientId, i.ingredientName]),
+    ).values(),
+  ];
   useEffect(() => {
     setDirty(contentDirty || imageDirty);
   }, [contentDirty, imageDirty, setDirty]);
@@ -63,12 +76,18 @@ export function RecipeEditor({
   }
   async function save(event: React.FormEvent) {
     event.preventDefault();
+    await saveRecipe(form.publicationState);
+  }
+  async function saveRecipe(publicationState: RecipeForm["publicationState"]) {
     setBusy(true);
     setError("");
     try {
       const result = await api<{ id: string }>(
         recipe ? `/recipes/${recipe.id}` : "/recipes",
-        { method: recipe ? "PUT" : "POST", body: JSON.stringify(form) },
+        {
+          method: recipe ? "PUT" : "POST",
+          body: JSON.stringify({ ...form, publicationState }),
+        },
       );
       setDirty(false);
       onSaved(recipe?.id ?? result.id);
@@ -89,13 +108,30 @@ export function RecipeEditor({
       </div>
       <form onSubmit={save}>
         <fieldset disabled={busy} className="plain-fieldset">
+          {pendingIngredients.length > 0 && (
+            <aside
+              className="publication-notice"
+              aria-label="Publiceringshinder"
+            >
+              <h2>Kan sparas som utkast – inte publiceras ännu</h2>
+              <p>
+                Följande ingredienser väntar på granskning:{" "}
+                <strong>{pendingIngredients.join(", ")}</strong>.
+              </p>
+              <p>
+                Behåll dem i ditt utkast eller ersätt dem med godkända
+                ingredienser. Publicering blir möjlig när alla ingredienser är
+                aktiva.
+              </p>
+            </aside>
+          )}
           <section className="panel">
             <h2>Grunderna</h2>
             <label>
               Receptnamn
               <input
                 autoFocus
-                required
+                required={form.publicationState === "Published"}
                 maxLength={200}
                 value={form.name}
                 onChange={(e) => patch({ name: e.target.value })}
@@ -111,21 +147,14 @@ export function RecipeEditor({
               />
             </label>
             <div className="columns">
-              <label>
-                Recepttyp
-                <select
-                  required
-                  value={form.recipeTypeId}
-                  onChange={(e) => patch({ recipeTypeId: e.target.value })}
-                >
-                  <option value="">Välj recepttyp</option>
-                  {catalogue.recipeTypes.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <RecipeTypeSelect
+                items={catalogue.recipeTypes.filter(
+                  (t) => t.isActive || t.id === recipe?.recipeTypeId,
+                )}
+                value={form.recipeTypeId ?? ""}
+                required={form.publicationState === "Published"}
+                onChange={(id) => patch({ recipeTypeId: id || null })}
+              />
               <label>
                 Total tid (minuter)
                 <input
@@ -158,39 +187,65 @@ export function RecipeEditor({
                 </select>
               </label>
             </div>
-            <h3>Utbyte</h3>
+            <h3>Ger</h3>
             <p className="hint">
               Hur mycket blir det? Ange en exakt mängd eller ett intervall, till
               exempel 20–24 stycken.
             </p>
             <QuantityFields
-              required
-              prefix="Utbyte: "
-              quantity={form.yield.quantity}
-              unitId={form.yield.unitId}
+              required={form.publicationState === "Published"}
+              prefix="Ger: "
+              quantity={
+                form.yield?.quantity ?? { value: null, maximumValue: null }
+              }
+              unitId={form.yield?.unitId ?? null}
               units={catalogue.units.filter((u) => u.forYield)}
               onChange={(quantity, unitId) =>
-                patch({ yield: { quantity, unitId: unitId ?? "" } })
+                patch({
+                  yield:
+                    quantity.value === null &&
+                    quantity.maximumValue === null &&
+                    !unitId
+                      ? null
+                      : { quantity, unitId: unitId ?? "" },
+                })
               }
             />
             <fieldset className="tags">
               <legend>Taggar</legend>
-              {catalogue.tags.map((t) => (
-                <label key={t.id}>
-                  <input
-                    type="checkbox"
-                    checked={form.tagIds.includes(t.id)}
-                    onChange={(e) =>
-                      patch({
-                        tagIds: e.target.checked
-                          ? [...form.tagIds, t.id]
-                          : form.tagIds.filter((id) => id !== t.id),
-                      })
-                    }
-                  />
-                  {t.name}
-                </label>
-              ))}
+              <label>
+                Sök taggar att välja
+                <input
+                  type="search"
+                  value={tagQuery}
+                  onChange={(e) => setTagQuery(e.target.value)}
+                  placeholder="Namn eller alias"
+                />
+              </label>
+              {catalogue.tags
+                .filter(
+                  (t) =>
+                    (t.isActive || recipe?.tagIds.includes(t.id)) &&
+                    (form.tagIds.includes(t.id) ||
+                      matchesCatalogue(t, tagQuery)),
+                )
+                .map((t) => (
+                  <label key={t.id}>
+                    <input
+                      type="checkbox"
+                      checked={form.tagIds.includes(t.id)}
+                      onChange={(e) =>
+                        patch({
+                          tagIds: e.target.checked
+                            ? [...form.tagIds, t.id]
+                            : form.tagIds.filter((id) => id !== t.id),
+                        })
+                      }
+                    />
+                    {t.name}
+                    {!t.isActive ? " (inaktiv)" : ""}
+                  </label>
+                ))}
             </fieldset>
           </section>
           <section className="panel">
@@ -247,6 +302,9 @@ export function RecipeEditor({
                   >
                     <div className="row-heading">
                       <strong>{item.ingredientName}</strong>
+                      {item.ingredientStatus === "PendingReview" && (
+                        <small>Väntar på granskning</small>
+                      )}
                       <OrderButtons
                         label={item.ingredientName}
                         index={ii}
@@ -342,6 +400,7 @@ export function RecipeEditor({
                   </div>
                 ))}
                 <IngredientPicker
+                  allowCreate
                   label={`Lägg till ingrediens i ${g.heading || `grupp ${gi + 1}`}`}
                   onSelect={(item) =>
                     group(gi, {
@@ -351,6 +410,7 @@ export function RecipeEditor({
                           clientKey: crypto.randomUUID(),
                           ingredientId: item.id,
                           ingredientName: item.name,
+                          ingredientStatus: item.status,
                           quantity: { value: null, maximumValue: null },
                           unitId: null,
                           amountDescription: null,
@@ -446,11 +506,25 @@ export function RecipeEditor({
             </span>
             <button
               className="primary"
-              disabled={busy || imageDirty}
+              disabled={
+                busy ||
+                imageDirty ||
+                (form.publicationState === "Published" &&
+                  pendingIngredients.length > 0)
+              }
               type="submit"
             >
               {busy ? "Sparar…" : "Spara recept"}
             </button>
+            {form.publicationState === "Published" && (
+              <button
+                type="button"
+                disabled={busy || imageDirty}
+                onClick={() => saveRecipe("Draft")}
+              >
+                Spara som utkast
+              </button>
+            )}
             {imageDirty && <small>Spara bildändringarna först.</small>}
           </div>
         </fieldset>

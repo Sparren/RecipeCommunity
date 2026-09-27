@@ -5,16 +5,37 @@ import { RecipeList } from "./features/recipes/RecipeList";
 import { RecipeEditor } from "./features/recipes/RecipeEditor";
 import { RecipeView } from "./features/recipes/RecipeView";
 import { IngredientAdmin } from "./features/catalogue/IngredientAdmin";
+import { TagTypeAdmin } from "./features/catalogue/TagTypeAdmin";
+import { IngredientWorkspace } from "./features/catalogue/IngredientWorkspace";
+
+type CurrentUser = {
+  id: string;
+  displayName: string;
+  isAdministrator: boolean;
+};
+// Retain existing bookmarks while placing editing and catalogue work in their activity modes.
+function canonicalPath(path: string) {
+  if (path === "/new") return "/create/new";
+  if (/^\/recipes\/[^/]+\/edit$/.test(path)) return "/create" + path;
+  if (["/ingredients", "/tags", "/recipe-types"].includes(path))
+    return "/admin" + path;
+  return path;
+}
 
 export default function App() {
   const [catalogue, setCatalogue] = useState<Catalogue>();
-  const [admin, setAdmin] = useState(false);
-  const [path, setPath] = useState(location.hash.slice(1) || "/");
+  const [user, setUser] = useState<CurrentUser>();
+  const [path, setPath] = useState(
+    canonicalPath(location.hash.slice(1) || "/"),
+  );
   const [recipe, setRecipe] = useState<RecipeDetail>();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const dirty = useRef(false);
   const currentPath = useRef(path);
+  const refreshCatalogue = useCallback(async () => {
+    setCatalogue(await api<Catalogue>("/catalogue"));
+  }, []);
   const setDirty = useCallback((value: boolean) => {
     dirty.current = value;
   }, []);
@@ -25,20 +46,18 @@ export default function App() {
       !window.confirm("Lämna sidan och förlora osparade ändringar?")
     )
       return;
+    const target = canonicalPath(next);
     dirty.current = false;
-    currentPath.current = next;
-    setPath(next);
-    location.hash = next;
+    currentPath.current = target;
+    setPath(target);
+    location.hash = target;
     window.scrollTo(0, 0);
   }, []);
   useEffect(() => {
-    Promise.all([
-      api<Catalogue>("/catalogue"),
-      api<{ isAdministrator: boolean }>("/me"),
-    ])
+    Promise.all([api<Catalogue>("/catalogue"), api<CurrentUser>("/me")])
       .then(([c, u]) => {
         setCatalogue(c);
-        setAdmin(u.isAdministrator);
+        setUser(u);
       })
       .catch((e) => setError(e.message));
     const beforeUnload = (e: BeforeUnloadEvent) => {
@@ -48,7 +67,7 @@ export default function App() {
       }
     };
     const changed = () => {
-      const next = location.hash.slice(1) || "/";
+      const next = canonicalPath(location.hash.slice(1) || "/");
       if (next === currentPath.current) return;
       if (
         dirty.current &&
@@ -71,15 +90,25 @@ export default function App() {
   useEffect(() => {
     setError("");
     setRecipe(undefined);
-    const match = path.match(/^\/recipes\/([^/]+)(?:\/edit)?$/);
+    const match = path.match(/^(?:\/create)?\/recipes\/([^/]+)(?:\/edit)?$/);
     if (!match) {
       setLoading(false);
       return;
     }
     const abort = new AbortController();
     setLoading(true);
-    api<RecipeDetail>(`/recipes/${match[1]}`, { signal: abort.signal })
-      .then(setRecipe)
+    api<RecipeDetail>("/recipes/" + match[1], { signal: abort.signal })
+      .then((value) => {
+        if (abort.signal.aborted) return;
+        if (
+          value.publicationState === "Draft" &&
+          !path.startsWith("/create/")
+        ) {
+          navigate("/create/recipes/" + value.id, true);
+          return;
+        }
+        setRecipe(value);
+      })
       .catch((e) => {
         if (e.name !== "AbortError") setError(e.message);
       })
@@ -87,26 +116,39 @@ export default function App() {
         if (!abort.signal.aborted) setLoading(false);
       });
     return () => abort.abort();
-  }, [path]);
+  }, [path, navigate]);
+  const creator = path === "/create" || path.startsWith("/create/");
+  const administration = path === "/admin" || path.startsWith("/admin/");
+  const admin = user?.isAdministrator === true;
+  const editAllowed = recipe?.authorId === user?.id;
   return (
     <>
       <header>
         <button className="brand" onClick={() => navigate("/")}>
           Recipe<span>RECEPTSAMLING</span>
         </button>
-        <nav aria-label="Huvudmeny">
+        <nav aria-label="Aktivitetslägen">
           <button
-            className={path === "/" ? "active" : ""}
+            className={!creator && !administration ? "active" : ""}
+            aria-current={!creator && !administration ? "page" : undefined}
             onClick={() => navigate("/")}
           >
-            Recept
+            Hitta &amp; laga
+          </button>
+          <button
+            className={creator ? "active" : ""}
+            aria-current={creator ? "page" : undefined}
+            onClick={() => navigate("/create")}
+          >
+            Skapa &amp; utforska
           </button>
           {admin && (
             <button
-              className={path === "/ingredients" ? "active" : ""}
-              onClick={() => navigate("/ingredients")}
+              className={administration ? "active" : ""}
+              aria-current={administration ? "page" : undefined}
+              onClick={() => navigate("/admin")}
             >
-              Ingredienskatalog
+              Administration
             </button>
           )}
         </nav>
@@ -120,44 +162,133 @@ export default function App() {
             <button onClick={() => location.reload()}>Försök igen</button>
           </p>
         )}
-        {!catalogue && !error && <p role="status">Läser katalogen…</p>}
-        {catalogue && !error && (
+        {(!catalogue || !user) && !error && (
+          <p role="status">Läser katalogen…</p>
+        )}
+        {catalogue && user && !error && (
           <>
-            {path === "/" ? (
-              <RecipeList catalogue={catalogue} navigate={navigate} />
-            ) : path === "/new" ? (
+            {creator && (
+              <nav className="mode-navigation" aria-label="Skapa och utforska">
+                <button onClick={() => navigate("/create")}>Mina recept</button>
+                <button onClick={() => navigate("/create/ingredients")}>
+                  Ingredienser
+                </button>
+              </nav>
+            )}
+            {administration && admin && path !== "/admin" && (
+              <nav
+                className="mode-navigation"
+                aria-label="Katalogadministration"
+              >
+                <button onClick={() => navigate("/admin/ingredients")}>
+                  Ingredienskatalog
+                </button>
+                <button onClick={() => navigate("/admin/tags")}>Taggar</button>
+                <button onClick={() => navigate("/admin/recipe-types")}>
+                  Recepttyper
+                </button>
+              </nav>
+            )}
+            {path === "/" || path === "/create" ? (
+              <RecipeList
+                key={path}
+                scope={creator ? "Mine" : "Published"}
+                catalogue={catalogue}
+                navigate={navigate}
+              />
+            ) : path === "/create/new" ? (
               <RecipeEditor
                 key="new"
                 catalogue={catalogue}
                 setDirty={setDirty}
-                onSaved={(id) => navigate(`/recipes/${id}`, true)}
-                onCancel={() => navigate("/")}
+                onSaved={(id) => navigate("/create/recipes/" + id, true)}
+                onCancel={() => navigate("/create")}
               />
-            ) : path === "/ingredients" ? (
-              admin ? (
-                <IngredientAdmin setDirty={setDirty} />
-              ) : (
-                <p>
+            ) : path === "/create/ingredients" ? (
+              <IngredientWorkspace administrator={admin} />
+            ) : administration ? (
+              !admin ? (
+                <p role="alert">
                   Endast administratören har tillgång till katalogändringar.
                 </p>
+              ) : path === "/admin" ? (
+                <>
+                  <div className="page-heading">
+                    <div>
+                      <p className="eyebrow">ADMINISTRATION</p>
+                      <h1>Underhåll katalogerna</h1>
+                      <p>
+                        Hantera gemensamma namn, alias och kataloguppgifter.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="administration-grid">
+                    <section className="panel">
+                      <h2>Ingredienser</h2>
+                      <p>
+                        Underhåll namn, översättningar och alias i
+                        ingredienskatalogen.
+                      </p>
+                      <button onClick={() => navigate("/admin/ingredients")}>
+                        Ingredienskatalog
+                      </button>
+                    </section>
+                    <section className="panel">
+                      <h2>Taggar</h2>
+                      <p>
+                        Hantera översättningar, alias och aktiva eller inaktiva
+                        taggar.
+                      </p>
+                      <button onClick={() => navigate("/admin/tags")}>
+                        Taggar
+                      </button>
+                    </section>
+                    <section className="panel">
+                      <h2>Recepttyper</h2>
+                      <p>
+                        Hantera typernas namn, alias, ordning och aktiva status.
+                      </p>
+                      <button onClick={() => navigate("/admin/recipe-types")}>
+                        Recepttyper
+                      </button>
+                    </section>
+                  </div>
+                </>
+              ) : path === "/admin/ingredients" ? (
+                <IngredientAdmin setDirty={setDirty} />
+              ) : path === "/admin/tags" || path === "/admin/recipe-types" ? (
+                <TagTypeAdmin
+                  key={path}
+                  kind={path === "/admin/tags" ? "tags" : "recipe-types"}
+                  setDirty={setDirty}
+                  onSaved={refreshCatalogue}
+                />
+              ) : (
+                <p>Sidan hittades inte.</p>
               )
             ) : loading ? (
               <p role="status">Läser receptet…</p>
             ) : recipe ? (
               path.endsWith("/edit") ? (
-                <RecipeEditor
-                  key={path}
-                  recipe={recipe}
-                  catalogue={catalogue}
-                  setDirty={setDirty}
-                  onSaved={(id) => navigate(`/recipes/${id}`, true)}
-                  onCancel={() => navigate(`/recipes/${recipe.id}`)}
-                />
+                editAllowed ? (
+                  <RecipeEditor
+                    key={path}
+                    recipe={recipe}
+                    catalogue={catalogue}
+                    setDirty={setDirty}
+                    onSaved={(id) => navigate("/create/recipes/" + id, true)}
+                    onCancel={() => navigate("/create/recipes/" + recipe.id)}
+                  />
+                ) : (
+                  <p role="alert">Du kan bara redigera dina egna recept.</p>
+                )
               ) : (
                 <RecipeView
                   recipe={recipe}
                   catalogue={catalogue}
                   navigate={navigate}
+                  creatorMode={creator}
+                  canEdit={editAllowed}
                 />
               )
             ) : (
